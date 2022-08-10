@@ -49,7 +49,7 @@ usertrap(void)
   
   // save user program counter.
   p->trapframe->epc = r_sepc();
-  
+
   if(r_scause() == 8){
     // system call
 
@@ -67,6 +67,21 @@ usertrap(void)
     syscall();
   } else if((which_dev = devintr()) != 0){
     // ok
+    if (which_dev == 2) {
+      p->ticksafter += 1;
+      if (p->ticksafter == p->alarminterval) {
+        if (p->allow_handler) {
+          p->allow_handler = 0;
+
+          save_retrieve(p->trapframe_backup, p->trapframe);
+          p->trapframe->epc = (uint64)p->handler;
+
+          p->ticksafter = 0;
+        } else {
+          p->ticksafter -= 1;
+        }
+      }
+    }
   } else {
     printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
     printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());

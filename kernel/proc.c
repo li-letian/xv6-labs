@@ -107,10 +107,20 @@ allocproc(void)
 found:
   p->pid = allocpid();
 
+  p->alarminterval = 0;
+  p->handler = 0;
+  p->ticksafter = 0;
+  p->allow_handler = 1;
+
   // Allocate a trapframe page.
   if((p->trapframe = (struct trapframe *)kalloc()) == 0){
     release(&p->lock);
     return 0;
+  }
+
+  if ((p->trapframe_backup = (struct trapframe *)kalloc()) == 0) {
+      release(&p->lock);
+      return 0;
   }
 
   // An empty user page table.
@@ -138,6 +148,8 @@ freeproc(struct proc *p)
 {
   if(p->trapframe)
     kfree((void*)p->trapframe);
+  if(p->trapframe_backup)
+    kfree((void*)p->trapframe_backup);
   p->trapframe = 0;
   if(p->pagetable)
     proc_freepagetable(p->pagetable, p->sz);
@@ -696,4 +708,40 @@ procdump(void)
     printf("%d %s %s", p->pid, state, p->name);
     printf("\n");
   }
+}
+
+
+void 
+save_retrieve(struct trapframe* to, struct trapframe* from) {
+  to->epc = from->epc;
+  to->ra = from->ra;
+  to->sp = from->sp;
+  to->gp = from->gp;
+  to->tp = from->tp;
+  to->t0 = from->t0;
+  to->t1 = from->t1;
+  to->t2 = from->t2;
+  to->t3 = from->t3;
+  to->t4 = from->t4;
+  to->t5 = from->t5;
+  to->t6 = from->t6;
+  to->a1 = from->a1;
+  to->a2 = from->a2;
+  to->a3 = from->a3;
+  to->a4 = from->a4;
+  to->a5 = from->a5;
+  to->a6 = from->a6;
+  to->a7 = from->a7;
+  to->s0 = from->s0;
+  to->s1 = from->s1;
+  to->s2 = from->s2;
+  to->s3 = from->s3;
+  to->s4 = from->s4;
+  to->s5 = from->s5;
+  to->s6 = from->s6;
+  to->s7 = from->s7;
+  to->s8 = from->s8;
+  to->s9 = from->s9;
+  to->s10 = from->s10;
+  to->s11 = from->s11;
 }
