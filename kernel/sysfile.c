@@ -484,3 +484,84 @@ sys_pipe(void)
   }
   return 0;
 }
+
+
+uint64
+sys_mmap(void) {
+  uint64 addr = 0;
+  uint length;
+  int prot;
+  int flags;
+  int fd;
+  uint offset;
+
+  if (argaddr(0, &addr) < 0 || argint(1, (int *)&length) < 0 
+      || argint(2, &prot) < 0 || argint(3, &flags) < 0
+      || argint(4, &fd) < 0 || argint(5, (int *)&offset)) {
+    return -1;
+  }
+
+  // doing lazy things here.nam
+  struct proc* p = myproc();
+  struct file* mapfile = p->ofile[fd];
+  if ((!mapfile->writable) && (prot & PROT_WRITE) && (!(flags & MAP_PRIVATE)))
+    return -1;
+  // traverse process's VMAs to find empty ones
+  int i;
+  for (i = 0; i < NVMA; i++) {
+    if (!p->vmas[i].valid) {
+      p->vmas[i].valid = 1;
+      p->vmas[i].prot = prot;
+      p->vmas[i].addr = addr = p->sz;
+      p->vmas[i].length = length;
+      p->vmas[i].flags = flags;
+      p->vmas[i].mapfile = mapfile;
+      filedup(p->ofile[fd]);
+      break;
+    }
+  }
+  
+  if (i == NVMA)
+    return -1;
+  
+  p->sz += length;
+
+  return addr;
+}
+
+uint64
+sys_munmap(void) {
+  uint64 addr;
+  int length;
+
+  if (argaddr(0, &addr) < 0 || argint(1, &length) < 0)
+    return -1;
+  
+  struct proc*p = myproc();
+
+  int i;
+  for (i = 0; i < NVMA; i++) {
+    if (p->vmas[i].valid) {
+      if (p->vmas[i].addr <= addr && (p->vmas[i].addr + p->vmas[i].length) > addr)
+        break;
+    }
+  }
+  
+  if (i == NVMA)
+    return -1;
+
+  struct vma *vmap = &p->vmas[i];
+  if (vmap->flags & MAP_SHARED) {
+    filewrite(vmap->mapfile, addr, length);
+  }
+
+  if (vmap->addr == addr && vmap->length == length) {
+    uvmunmap(p->pagetable, addr, length/PGSIZE, 1);
+    fileclose(vmap->mapfile);
+    vmap->length -= length;
+  } else if (vmap->addr + vmap->length == addr + length) {
+    uvmunmap(p->pagetable, addr, length / PGSIZE, 1);
+    vmap->length -= length;
+  }
+  return 0;
+}
